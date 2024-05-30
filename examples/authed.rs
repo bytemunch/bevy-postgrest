@@ -7,18 +7,26 @@ use bevy_http_client::{
     HttpClient, HttpClientPlugin,
 };
 use bevy_postgrest::{Client, PostgrestPlugin};
+use chrono::DateTime;
 use serde::Deserialize;
-use serde_json::Value;
+use uuid::Uuid;
 
 #[allow(dead_code)]
 #[derive(Event, Debug, Deserialize)]
-pub struct MyPostgresResponse {
-    res: Value,
+pub struct MyPostgresResponse(Vec<TodoTask>);
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct TodoTask {
+    id: i8,
+    inserted_at: DateTime<chrono::Local>,
+    is_complete: bool,
+    task: String,
+    user_id: Uuid,
 }
 
 fn main() {
     let endpoint = "http://127.0.0.1:54321/rest/v1".into();
-
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins)
@@ -84,5 +92,10 @@ fn postgres_recv(mut evr: EventReader<TypedResponse<MyPostgresResponse>>) {
 fn postgres_err(mut evr: EventReader<TypedResponseError<MyPostgresResponse>>) {
     for ev in evr.read() {
         println!("[ERR] {:?}", ev);
+        if let Some(res) = &ev.response {
+            if let Ok(body) = std::str::from_utf8(res.bytes.as_slice()) {
+                println!("[BODY] {:?}", body);
+            }
+        }
     }
 }
