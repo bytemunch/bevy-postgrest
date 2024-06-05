@@ -16,3 +16,4 @@ bevy_http_client = "0.5.1"
 bevy-gotrue = { path = "../bevy-gotrue/" }
 chrono = { version = "0.4.38", features = ["serde"] }
 uuid = { version = "1.8.0", features = ["serde"] }
+serde_json = "1.0.117"

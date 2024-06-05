@@ -1,14 +1,15 @@
 use std::time::Duration;
 
 use bevy::{prelude::*, time::common_conditions::on_timer};
-use bevy_gotrue::{is_logged_in, AuthCreds, AuthPlugin, Client as AuthClient};
+use bevy_gotrue::{is_logged_in, AuthCreds, AuthPlugin, Client as AuthClient, Session};
 use bevy_http_client::{
     prelude::{HttpTypedRequestTrait, TypedRequest, TypedResponse, TypedResponseError},
     HttpClient, HttpClientPlugin,
 };
 use bevy_postgrest::{Client, PostgrestPlugin};
 use chrono::DateTime;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 
 #[derive(Event, Debug, Deserialize)]
@@ -18,6 +19,13 @@ pub struct TodoTaskList(Vec<TodoTask>);
 struct TodoTask {
     id: i8,
     inserted_at: DateTime<chrono::Local>,
+    is_complete: bool,
+    task: String,
+    user_id: Uuid,
+}
+
+#[derive(Serialize)]
+struct NewTodoTask {
     is_complete: bool,
     task: String,
     user_id: Uuid,
@@ -37,11 +45,14 @@ fn main() {
         .add_systems(
             Update,
             (
-                send_every_second
+                read_every_second
                     .run_if(on_timer(Duration::from_secs(1)))
                     .run_if(is_logged_in),
                 postgres_recv,
                 postgres_err,
+                write_every_three_seconds
+                    .run_if(is_logged_in)
+                    .run_if(on_timer(Duration::from_secs(3))),
             ),
         )
         .register_request_type::<TodoTaskList>();
@@ -59,18 +70,37 @@ fn setup(mut commands: Commands, auth: Res<AuthClient>) {
     );
 }
 
-fn send_every_second(
+fn read_every_second(
     client: Res<Client>,
     mut evw: EventWriter<TypedRequest<TodoTaskList>>,
-    auth: Option<Res<AuthClient>>,
+    session: Res<Session>,
 ) {
     let mut req = client.from("todos").select("*");
 
-    if let Some(auth) = auth {
-        if let Some(token) = auth.access_token.clone() {
-            req = req.auth(token);
-        }
-    }
+    req = req.auth(session.access_token.clone());
+
+    let req = req.build();
+
+    let req = HttpClient::new().request(req).with_type::<TodoTaskList>();
+
+    evw.send(req);
+}
+
+fn write_every_three_seconds(
+    client: Res<Client>,
+    mut evw: EventWriter<TypedRequest<TodoTaskList>>,
+    session: Res<Session>,
+) {
+    let mut req = client.from("todos").insert(
+        json!(NewTodoTask {
+            is_complete: false,
+            task: "this is a new task".into(),
+            user_id: session.user.id.parse().unwrap()
+        })
+        .to_string(),
+    );
+
+    req = req.auth(session.access_token.clone());
 
     let req = req.build();
 
@@ -87,8 +117,8 @@ fn postgres_recv(mut evr: EventReader<TypedResponse<TodoTaskList>>) {
                 task.id, task.task, task.is_complete, task.inserted_at, task.user_id
             );
         }
+        println!("\n");
     }
-    println!("\n");
 }
 
 fn postgres_err(mut evr: EventReader<TypedResponseError<TodoTaskList>>) {
