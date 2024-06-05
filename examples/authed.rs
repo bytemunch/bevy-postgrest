@@ -11,11 +11,9 @@ use chrono::DateTime;
 use serde::Deserialize;
 use uuid::Uuid;
 
-#[allow(dead_code)]
 #[derive(Event, Debug, Deserialize)]
-pub struct MyPostgresResponse(Vec<TodoTask>);
+pub struct TodoTaskList(Vec<TodoTask>);
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct TodoTask {
     id: i8,
@@ -46,7 +44,7 @@ fn main() {
                 postgres_err,
             ),
         )
-        .register_request_type::<MyPostgresResponse>();
+        .register_request_type::<TodoTaskList>();
 
     app.run()
 }
@@ -63,7 +61,7 @@ fn setup(mut commands: Commands, auth: Res<AuthClient>) {
 
 fn send_every_second(
     client: Res<Client>,
-    mut evw: EventWriter<TypedRequest<MyPostgresResponse>>,
+    mut evw: EventWriter<TypedRequest<TodoTaskList>>,
     auth: Option<Res<AuthClient>>,
 ) {
     let mut req = client.from("todos").select("*");
@@ -76,20 +74,24 @@ fn send_every_second(
 
     let req = req.build();
 
-    let req = HttpClient::new()
-        .request(req)
-        .with_type::<MyPostgresResponse>();
+    let req = HttpClient::new().request(req).with_type::<TodoTaskList>();
 
     evw.send(req);
 }
 
-fn postgres_recv(mut evr: EventReader<TypedResponse<MyPostgresResponse>>) {
+fn postgres_recv(mut evr: EventReader<TypedResponse<TodoTaskList>>) {
     for ev in evr.read() {
-        println!("[RECV] {:?}", ev);
+        for task in &ev.0 {
+            println!(
+                "[TASK] {} {} {} {} {}",
+                task.id, task.task, task.is_complete, task.inserted_at, task.user_id
+            );
+        }
     }
+    println!("\n");
 }
 
-fn postgres_err(mut evr: EventReader<TypedResponseError<MyPostgresResponse>>) {
+fn postgres_err(mut evr: EventReader<TypedResponseError<TodoTaskList>>) {
     for ev in evr.read() {
         println!("[ERR] {:?}", ev);
         if let Some(res) = &ev.response {
