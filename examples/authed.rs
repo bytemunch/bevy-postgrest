@@ -57,7 +57,7 @@ fn main() {
         )
         .register_request_type::<TodoTaskList>();
 
-    app.run()
+    app.run();
 }
 
 fn setup(mut commands: Commands, auth: Res<AuthClient>) {
